@@ -25,8 +25,8 @@ export function AvatarWoman(props) {
   );
 
   useEffect(() => {
-    actions[femaleAnimation].reset().fadeIn(0.3).play();
-    return () => actions[femaleAnimation].reset().fadeOut(0.3);
+    actions[femaleAnimation].reset().fadeIn(0).play();
+    return () => actions[femaleAnimation].reset().fadeOut(0);
   }, [femaleAnimation, actions]);
 
   return (

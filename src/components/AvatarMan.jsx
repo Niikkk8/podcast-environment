@@ -25,8 +25,8 @@ export function AvatarMan(props) {
   );
 
   useEffect(() => {
-    actions[maleAnimation].reset().fadeIn(0.3).play();
-    return () => actions[maleAnimation].reset().fadeOut(0.3);
+    actions[maleAnimation].reset().fadeIn(0).play();
+    return () => actions[maleAnimation].reset().fadeOut(0);
   }, [maleAnimation, actions]);
 
   return (
