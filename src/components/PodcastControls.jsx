@@ -25,6 +25,22 @@ export const PodcastControls = () => {
     const speakingRef = useRef(null);
     const voicesLoadedRef = useRef(false);
     const [availableVoices, setAvailableVoices] = useState([]);
+    const [showModal, setShowModal] = useState(false);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [preferences, setPreferences] = useState({
+        length: 'medium',
+        tone: 'casual',
+        detailLevel: 'balanced',
+        targetAudience: 'general',
+        speakingPace: 'normal',
+        includedSections: {
+            methodology: true,
+            results: true,
+            implications: true,
+            limitations: true,
+            futureWork: true
+        }
+    });
 
     const cleanMessage = (message) => {
         return message
@@ -68,7 +84,9 @@ export const PodcastControls = () => {
                 utterance.voice = selectedVoice;
             }
 
-            utterance.rate = 1;
+            // Adjust rate based on preferences
+            utterance.rate = preferences.speakingPace === 'slow' ? 0.8 : 
+                           preferences.speakingPace === 'fast' ? 1.2 : 1;
             utterance.pitch = isMale ? 0.9 : 1.1;
             utterance.volume = 1.0;
 
@@ -86,13 +104,13 @@ export const PodcastControls = () => {
             speakingRef.current = utterance;
             setIsSpeaking(true);
 
-            // Split long text into sentences to prevent interruption
             const sentences = text.split(/[.!?]+/).filter(Boolean);
             sentences.forEach((sentence, index) => {
                 setTimeout(() => {
                     const utterance = new SpeechSynthesisUtterance(sentence + '.');
                     utterance.voice = selectedVoice;
-                    utterance.rate = 1;
+                    utterance.rate = preferences.speakingPace === 'slow' ? 0.8 : 
+                                   preferences.speakingPace === 'fast' ? 1.2 : 1;
                     utterance.pitch = isMale ? 0.9 : 1.1;
                     utterance.volume = 1.0;
 
@@ -114,7 +132,6 @@ export const PodcastControls = () => {
 
         const nextIndex = currentIndex + 1;
 
-        // Handle initial greeting
         if (currentIndex === -1) {
             setMaleAnimation('Greeting');
             setFemaleAnimation('Greeting');
@@ -129,10 +146,8 @@ export const PodcastControls = () => {
             return;
         }
 
-        // Set display for next message
         setCurrentIndex(nextIndex);
 
-        // End of conversation
         if (nextIndex >= conversation.length) {
             setIsPlaying(false);
             setMaleAnimation('Idle');
@@ -140,7 +155,6 @@ export const PodcastControls = () => {
             return;
         }
 
-        // Regular conversation flow
         const message = cleanMessage(conversation[nextIndex].message);
         const isHost = conversation[nextIndex].speaker === 'Host';
 
@@ -162,16 +176,45 @@ export const PodcastControls = () => {
         }
     };
 
-    const handleFileUpload = async (event) => {
+    const handlePreferenceChange = (e) => {
+        const { name, value, type, checked } = e.target;
+        setPreferences(prev => {
+            if (type === 'checkbox') {
+                return {
+                    ...prev,
+                    includedSections: {
+                        ...prev.includedSections,
+                        [name]: checked
+                    }
+                };
+            }
+            return {
+                ...prev,
+                [name]: value
+            };
+        });
+    };
+
+    const handleFileSelect = (event) => {
         const file = event.target.files[0];
         if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
             alert('Please upload a PDF file');
             return;
         }
+        setSelectedFile(file);
+        setShowModal(true);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!selectedFile) return;
 
         setIsGenerating(true);
+        setShowModal(false);
+
         const formData = new FormData();
-        formData.append('pdf', file);
+        formData.append('pdf', selectedFile);
+        formData.append('preferences', JSON.stringify(preferences));
 
         try {
             const response = await fetch('http://localhost:5000/api/generate-podcast', {
@@ -229,6 +272,8 @@ export const PodcastControls = () => {
         setIsPlaying(false);
         setMaleAnimation('Idle');
         setFemaleAnimation('Idle');
+        setSelectedFile(null);
+        setShowModal(false);
     };
 
     useEffect(() => {
@@ -256,32 +301,39 @@ export const PodcastControls = () => {
         }
     }, [isPlaying, isSpeaking, currentIndex]);
 
+    console.log(conversation)
+
     return (
-        <>
-            {/* Minimal controls overlay */}
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 flex flex-col gap-4 bg-black/20 backdrop-blur-sm p-4 rounded-lg z-10">
+        <div className="relative min-h-screen bg-gray-100 flex flex-col items-center px-4">
+            {/* Main Controls */}
+            <div className="fixed top-6 left-1/2 transform -translate-x-1/2 flex flex-col gap-4 
+                            bg-black/30 backdrop-blur-md p-5 rounded-xl shadow-lg z-10">
                 <div className="flex items-center gap-4">
                     {!conversation.length && (
                         <input
                             type="file"
                             accept=".pdf"
-                            onChange={handleFileUpload}
-                            className="file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-500 file:text-white hover:file:bg-blue-600 text-white"
+                            onChange={handleFileSelect}
+                            className="file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 
+                                     file:bg-gradient-to-r from-blue-500 to-indigo-500 file:text-white 
+                                     hover:file:opacity-90 transition cursor-pointer"
                         />
                     )}
-
+    
                     {conversation.length > 0 && (
-                        <div className="flex gap-2">
+                        <div className="flex gap-3">
                             <button
                                 onClick={handlePlayPause}
-                                className="px-4 py-2 rounded-md bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                                className="px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold 
+                                         shadow-md hover:bg-blue-700 transition disabled:opacity-50"
                                 disabled={isGenerating}
                             >
                                 {isPlaying ? 'Pause' : 'Play'}
                             </button>
                             <button
                                 onClick={handleReset}
-                                className="px-4 py-2 rounded-md bg-gray-500 text-white hover:bg-gray-600 transition-colors"
+                                className="px-5 py-2 rounded-lg bg-gray-600 text-white font-semibold 
+                                         shadow-md hover:bg-gray-700 transition disabled:opacity-50"
                                 disabled={isGenerating}
                             >
                                 Reset
@@ -289,23 +341,113 @@ export const PodcastControls = () => {
                         </div>
                     )}
                 </div>
-
+    
                 {isGenerating && (
-                    <div className="text-white animate-pulse">
+                    <div className="text-white animate-pulse text-center font-semibold">
                         Generating podcast script...
                     </div>
                 )}
-
+    
                 {paperDetails.title && (
                     <div className="text-white text-center">
-                        <h3 className="font-bold">{paperDetails.title}</h3>
-                        <p className="text-sm opacity-75">{paperDetails.topic}</p>
+                        <h3 className="font-bold text-lg">{paperDetails.title}</h3>
+                        <p className="text-sm opacity-80">{paperDetails.topic}</p>
                     </div>
                 )}
             </div>
-
+    
+            {/* Preferences Modal */}
+            {showModal && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 
+                                transition-opacity duration-300">
+                    <div className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-lg mx-4">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold text-gray-900">Customize Your Podcast</h2>
+                            <button 
+                                onClick={() => setShowModal(false)}
+                                className="text-gray-500 hover:text-gray-700 p-2 rounded-full transition"
+                            >
+                                ✕
+                            </button>
+                        </div>
+    
+                        <form onSubmit={handleSubmit} className="space-y-5">
+                            <div className="space-y-4">
+                                {[
+                                    { label: 'Podcast Length', name: 'length', options: ['Short (5-10 minutes)', 'Medium (10-15 minutes)', 'Long (15-20 minutes)'] },
+                                    { label: 'Conversation Tone', name: 'tone', options: ['Casual & Conversational', 'Professional', 'Academic'] },
+                                    { label: 'Detail Level', name: 'detailLevel', options: ['High-level Overview', 'Balanced', 'In-depth Details'] },
+                                    { label: 'Target Audience', name: 'targetAudience', options: ['General Public', 'Academic Researchers', 'Industry Professionals'] },
+                                    { label: 'Speaking Pace', name: 'speakingPace', options: ['Slow & Clear', 'Normal', 'Fast-paced'] }
+                                ].map(({ label, name, options }) => (
+                                    <div key={name}>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+                                        <select
+                                            name={name}
+                                            value={preferences[name]}
+                                            onChange={handlePreferenceChange}
+                                            className="w-full border border-gray-300 rounded-lg px-3 py-2 
+                                                     focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                                        >
+                                            {options.map((option, index) => (
+                                                <option key={index} value={option.toLowerCase()}>{option}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                ))}
+                            </div>
+    
+                            {/* Checkbox Sections */}
+                            <div className="mt-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Include Sections</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {Object.entries({
+                                        methodology: 'Research Methodology',
+                                        results: 'Key Results',
+                                        implications: 'Practical Implications',
+                                        limitations: 'Study Limitations',
+                                        futureWork: 'Future Work'
+                                    }).map(([key, label]) => (
+                                        <label key={key} className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                name={key}
+                                                checked={preferences.includedSections[key]}
+                                                onChange={handlePreferenceChange}
+                                                className="rounded border-gray-300 text-blue-500 
+                                                         focus:ring-blue-500 transition"
+                                            />
+                                            <span className="text-sm text-gray-700">{label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+    
+                            {/* Modal Actions */}
+                            <div className="flex gap-4 pt-5 border-t border-gray-200 mt-4">
+                                <button
+                                    type="submit"
+                                    className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 text-white 
+                                             font-semibold py-2 px-4 rounded-lg shadow-md hover:opacity-90 transition"
+                                >
+                                    Generate Podcast
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowModal(false)}
+                                    className="flex-1 bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg 
+                                             shadow-md hover:bg-gray-700 transition"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+    
             {/* Chat history component */}
             {conversation.length > 0 && <ChatHistory />}
-        </>
+        </div>
     );
-};
+}    
