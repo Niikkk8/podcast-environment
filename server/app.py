@@ -18,7 +18,7 @@ CORS(app, resources={
 
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 
-GEMINI_API_KEY = "AIzaSyCB0zWn6ckffU2UecqTA6djTTV-04_LHOs"
+GEMINI_API_KEY = "AIzaSyAJG76gsqVHGiJ0TKwTZqKvrpdvmFw7k0M"
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-pro')
 
@@ -123,122 +123,76 @@ def get_conversation_style(preferences):
     """
 
 def generate_conversation(text, key_points, preferences, title, topic):
-    """Generate a structured podcast conversation with multiple stages"""
     conversation = []
     style_instructions = get_conversation_style(preferences)
     included_sections = preferences['includedSections']
     
-    # Stage 1: Introduction
+    # Introduction
     intro_prompt = f"""Generate a welcoming podcast introduction for a research paper discussion.
     The paper is titled '{title}' about {topic}'.
     
-    Important guidelines:
-    - Start with a general welcome to the audience
-    - Do not use any personal references or names
-    - Don't say "I'm your host" or mention any specific presenter
-    - Avoid phrases like "we have with us today" or "our guest"
+    Guidelines:
+    - Start with a general welcome
+    - No personal references or specific host names
     - Focus on the topic and its importance
     - Use engaging but professional language
-    - Make it sound natural for text-to-speech
     
     {style_instructions}"""
     
     host_intro = model.generate_content(intro_prompt)
     conversation.append({"speaker": "Host", "message": host_intro.text.strip()})
     
-    guest_intro = f"""Generate an expert's opening response about the paper '{title}'.
-    
-    Important guidelines:
-    - Don't introduce yourself or use personal references
-    - No phrases like "I'm excited to be here"
+    guest_intro = model.generate_content(f"""
+    Generate an expert's opening response about the paper '{title}'.
     - Focus directly on the research topic
-    - Express enthusiasm about the research itself
+    - Express enthusiasm about the research
     - Use natural, conversational language
     
-    {style_instructions}"""
+    {style_instructions}
+    """)
+    conversation.append({"speaker": "Guest", "message": guest_intro.text.strip()})
     
-    guest_response = model.generate_content(guest_intro)
-    conversation.append({"speaker": "Guest", "message": guest_response.text.strip()})
-    
-    # Stage 2: Research Objective and Background
+    # Main sections
     if included_sections.get('methodology', True):
-        objective_prompt = f"""Ask about the main research objective and its significance.
-        Context: {key_points[0] if key_points else ''}
-        Important: Keep it natural and conversational. Avoid speaker labels or personal references.
-        {style_instructions}"""
-        
-        host_objective = model.generate_content(objective_prompt)
-        conversation.append({"speaker": "Host", "message": host_objective.text.strip()})
-        
-        guest_objective = f"""Explain the research objective and its importance.
-        Context: {key_points[0] if key_points else ''}
-        Use clear language and focus on why this research matters.
-        {style_instructions}"""
-        
-        guest_objective_response = model.generate_content(guest_objective)
-        conversation.append({"speaker": "Guest", "message": guest_objective_response.text.strip()})
+        for prompt in [
+            (f"Ask about the research objective and its significance.\nContext: {key_points[0] if key_points else ''}", True),
+            (f"Explain the research objective and its importance.\nContext: {key_points[0] if key_points else ''}", False),
+            (f"Ask about the research methodology.\nContext: {key_points[1] if len(key_points) > 1 else ''}", True),
+            (f"Explain the methodology clearly.\nContext: {key_points[1] if len(key_points) > 1 else ''}", False)
+        ]:
+            response = model.generate_content(f"{prompt[0]}\n{style_instructions}")
+            conversation.append({
+                "speaker": "Host" if prompt[1] else "Guest",
+                "message": response.text.strip()
+            })
     
-    # Stage 3: Methodology Discussion
-    if included_sections.get('methodology', True):
-        method_prompt = f"""Ask about the research methodology and approach.
-        Context: {key_points[1] if len(key_points) > 1 else ''}
-        Focus on making complex methods understandable.
-        {style_instructions}"""
-        
-        host_method = model.generate_content(method_prompt)
-        conversation.append({"speaker": "Host", "message": host_method.text.strip()})
-        
-        guest_method = f"""Explain the research methodology clearly.
-        Context: {key_points[1] if len(key_points) > 1 else ''}
-        Make technical aspects accessible to the audience.
-        {style_instructions}"""
-        
-        guest_method_response = model.generate_content(guest_method)
-        conversation.append({"speaker": "Guest", "message": guest_method_response.text.strip()})
-    
-    # Stage 4: Key Findings and Results
     if included_sections.get('results', True):
-        results_prompt = f"""Ask about the key findings and their significance.
-        Context: {key_points[2] if len(key_points) > 2 else ''}
-        Show enthusiasm about the discoveries.
-        {style_instructions}"""
-        
-        host_results = model.generate_content(results_prompt)
-        conversation.append({"speaker": "Host", "message": host_results.text.strip()})
-        
-        guest_results = f"""Share the key findings and their importance.
-        Context: {key_points[2] if len(key_points) > 2 else ''}
-        Explain results in an engaging way.
-        {style_instructions}"""
-        
-        guest_results_response = model.generate_content(guest_results)
-        conversation.append({"speaker": "Guest", "message": guest_results_response.text.strip()})
+        for prompt in [
+            (f"Ask about key findings.\nContext: {key_points[2] if len(key_points) > 2 else ''}", True),
+            (f"Share the key findings and their importance.\nContext: {key_points[2] if len(key_points) > 2 else ''}", False)
+        ]:
+            response = model.generate_content(f"{prompt[0]}\n{style_instructions}")
+            conversation.append({
+                "speaker": "Host" if prompt[1] else "Guest",
+                "message": response.text.strip()
+            })
     
-    # Stage 5: Implications and Future Work
     if included_sections.get('implications', True):
-        implications_prompt = f"""Ask about practical implications and future directions.
-        Context: {key_points[3] if len(key_points) > 3 else ''}
-        Focus on real-world impact and potential applications.
-        {style_instructions}"""
-        
-        host_implications = model.generate_content(implications_prompt)
-        conversation.append({"speaker": "Host", "message": host_implications.text.strip()})
-        
-        guest_implications = f"""Discuss practical applications and future work.
-        Context: {key_points[3] if len(key_points) > 3 else ''}
-        Emphasize potential impact and next steps.
-        {style_instructions}"""
-        
-        guest_implications_response = model.generate_content(guest_implications)
-        conversation.append({"speaker": "Guest", "message": guest_implications_response.text.strip()})
+        for prompt in [
+            (f"Ask about practical implications.\nContext: {key_points[3] if len(key_points) > 3 else ''}", True),
+            (f"Discuss practical applications.\nContext: {key_points[3] if len(key_points) > 3 else ''}", False)
+        ]:
+            response = model.generate_content(f"{prompt[0]}\n{style_instructions}")
+            conversation.append({
+                "speaker": "Host" if prompt[1] else "Guest",
+                "message": response.text.strip()
+            })
     
-    # Closing remarks
-    closing_prompt = f"""Generate a concluding remark to wrap up the discussion.
+    # Closing
+    closing = model.generate_content(f"""Generate a concluding remark.
     Summarize key points and thank the audience.
-    {style_instructions}"""
-    
-    host_closing = model.generate_content(closing_prompt)
-    conversation.append({"speaker": "Host", "message": host_closing.text.strip()})
+    {style_instructions}""")
+    conversation.append({"speaker": "Host", "message": closing.text.strip()})
     
     return conversation
 
@@ -248,7 +202,6 @@ def generate_podcast():
         if 'pdf' not in request.files:
             return jsonify({'error': 'No PDF file provided'}), 400
 
-        # Get and parse preferences
         preferences = json.loads(request.form.get('preferences', '{}'))
         pdf_file = request.files['pdf']
         
@@ -259,11 +212,8 @@ def generate_podcast():
         if not research_paper_text:
             return jsonify({'error': 'Failed to extract text from PDF'}), 400
 
-        # Extract paper details and key points
         title, topic = extract_paper_details(research_paper_text)
         key_points = extract_key_points(research_paper_text)
-        
-        # Generate conversation based on preferences
         conversation = generate_conversation(
             research_paper_text,
             key_points,

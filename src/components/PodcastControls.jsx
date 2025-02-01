@@ -27,10 +27,12 @@ export const PodcastControls = () => {
     const [availableVoices, setAvailableVoices] = useState([]);
     const [showModal, setShowModal] = useState(false);
     const [selectedFile, setSelectedFile] = useState(null);
+    
+    // Updated preferences state with proper initial values
     const [preferences, setPreferences] = useState({
         length: 'medium',
         tone: 'casual',
-        detailLevel: 'balanced',
+        detailLevel: 'overview',
         targetAudience: 'general',
         speakingPace: 'normal',
         includedSections: {
@@ -41,6 +43,55 @@ export const PodcastControls = () => {
             futureWork: true
         }
     });
+
+    // Form options with proper value/label pairs
+    const formOptions = [
+        { 
+            label: 'Podcast Length', 
+            name: 'length', 
+            options: [
+                { value: 'short', label: 'Short (5-10 minutes)' },
+                { value: 'medium', label: 'Medium (10-15 minutes)' },
+                { value: 'long', label: 'Long (15-20 minutes)' }
+            ]
+        },
+        { 
+            label: 'Conversation Tone', 
+            name: 'tone', 
+            options: [
+                { value: 'casual', label: 'Casual & Conversational' },
+                { value: 'professional', label: 'Professional' },
+                { value: 'academic', label: 'Academic' }
+            ]
+        },
+        { 
+            label: 'Detail Level', 
+            name: 'detailLevel', 
+            options: [
+                { value: 'overview', label: 'High-level Overview' },
+                { value: 'balanced', label: 'Balanced' },
+                { value: 'detailed', label: 'In-depth Details' }
+            ]
+        },
+        { 
+            label: 'Target Audience', 
+            name: 'targetAudience', 
+            options: [
+                { value: 'general', label: 'General Public' },
+                { value: 'academic', label: 'Academic Researchers' },
+                { value: 'industry', label: 'Industry Professionals' }
+            ]
+        },
+        { 
+            label: 'Speaking Pace', 
+            name: 'speakingPace', 
+            options: [
+                { value: 'slow', label: 'Slow & Clear' },
+                { value: 'normal', label: 'Normal' },
+                { value: 'fast', label: 'Fast-paced' }
+            ]
+        }
+    ];
 
     const cleanMessage = (message) => {
         return message
@@ -84,7 +135,6 @@ export const PodcastControls = () => {
                 utterance.voice = selectedVoice;
             }
 
-            // Adjust rate based on preferences
             utterance.rate = preferences.speakingPace === 'slow' ? 0.8 : 
                            preferences.speakingPace === 'fast' ? 1.2 : 1;
             utterance.pitch = isMale ? 0.9 : 1.1;
@@ -135,10 +185,8 @@ export const PodcastControls = () => {
         if (currentIndex === -1) {
             setMaleAnimation('Greeting');
             setFemaleAnimation('Greeting');
-            await speakText(INTRO_MESSAGE.replace('[TOPIC]', paperDetails.topic), true);
+            await speakText(INTRO_MESSAGE);
             await new Promise(resolve => setTimeout(resolve, 500));
-            setMaleAnimation('Talking');
-            setFemaleAnimation('Idle');
             setCurrentIndex(nextIndex);
             const firstMessage = cleanMessage(conversation[0].message);
             await speakText(firstMessage, true);
@@ -219,8 +267,7 @@ export const PodcastControls = () => {
         try {
             const response = await fetch('http://localhost:5000/api/generate-podcast', {
                 method: 'POST',
-                body: formData,
-                signal: AbortSignal.timeout(300000),
+                body: formData
             });
 
             if (!response.ok) {
@@ -301,13 +348,11 @@ export const PodcastControls = () => {
         }
     }, [isPlaying, isSpeaking, currentIndex]);
 
-    console.log(conversation)
-
     return (
         <div className="relative min-h-screen bg-gray-100 flex flex-col items-center px-4">
             {/* Main Controls */}
             <div className="fixed top-6 left-1/2 transform -translate-x-1/2 flex flex-col gap-4 
-                            bg-black/30 backdrop-blur-md p-5 rounded-xl shadow-lg z-10">
+                          bg-black/30 backdrop-blur-md p-5 rounded-xl shadow-lg z-10">
                 <div className="flex items-center gap-4">
                     {!conversation.length && (
                         <input
@@ -358,8 +403,7 @@ export const PodcastControls = () => {
     
             {/* Preferences Modal */}
             {showModal && (
-                <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50 
-                                transition-opacity duration-300">
+                <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
                     <div className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-lg mx-4">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-xl font-bold text-gray-900">Customize Your Podcast</h2>
@@ -373,15 +417,11 @@ export const PodcastControls = () => {
     
                         <form onSubmit={handleSubmit} className="space-y-5">
                             <div className="space-y-4">
-                                {[
-                                    { label: 'Podcast Length', name: 'length', options: ['Short (5-10 minutes)', 'Medium (10-15 minutes)', 'Long (15-20 minutes)'] },
-                                    { label: 'Conversation Tone', name: 'tone', options: ['Casual & Conversational', 'Professional', 'Academic'] },
-                                    { label: 'Detail Level', name: 'detailLevel', options: ['High-level Overview', 'Balanced', 'In-depth Details'] },
-                                    { label: 'Target Audience', name: 'targetAudience', options: ['General Public', 'Academic Researchers', 'Industry Professionals'] },
-                                    { label: 'Speaking Pace', name: 'speakingPace', options: ['Slow & Clear', 'Normal', 'Fast-paced'] }
-                                ].map(({ label, name, options }) => (
+                                {formOptions.map(({ label, name, options }) => (
                                     <div key={name}>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            {label}
+                                        </label>
                                         <select
                                             name={name}
                                             value={preferences[name]}
@@ -389,8 +429,10 @@ export const PodcastControls = () => {
                                             className="w-full border border-gray-300 rounded-lg px-3 py-2 
                                                      focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
                                         >
-                                            {options.map((option, index) => (
-                                                <option key={index} value={option.toLowerCase()}>{option}</option>
+                                            {options.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
                                             ))}
                                         </select>
                                     </div>
@@ -399,7 +441,9 @@ export const PodcastControls = () => {
     
                             {/* Checkbox Sections */}
                             <div className="mt-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Include Sections</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Include Sections
+                                </label>
                                 <div className="grid grid-cols-2 gap-3">
                                     {Object.entries({
                                         methodology: 'Research Methodology',
@@ -450,4 +494,4 @@ export const PodcastControls = () => {
             {conversation.length > 0 && <ChatHistory />}
         </div>
     );
-}    
+};

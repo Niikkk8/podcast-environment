@@ -3,7 +3,7 @@ import { PodcastControls } from "./components/PodcastControls";
 import { AnimationProvider } from "./context/AnimationContext";
 import { Canvas } from "@react-three/fiber";
 import { Experience } from "./components/Experience";
-import { AnimationControls } from "./components/AnimationControls";
+// import { AnimationControls } from "./components/AnimationControls";
 
 function App() {
   return (
@@ -14,7 +14,7 @@ function App() {
             <color attach="background" args={["#f3f3f3"]} />
             <Experience />
           </Canvas>
-          <AnimationControls />
+          {/* <AnimationControls /> */}
           <div style={{ maxWidth: "90vw", overflowX: "auto" }}>
             <PodcastControls />
           </div>
