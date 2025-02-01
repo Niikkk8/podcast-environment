@@ -283,7 +283,8 @@ export const PodcastControls = () => {
             setConversation(data.conversation);
             setPaperDetails({
                 title: data.title || 'Untitled Paper',
-                topic: data.topic || 'General Research'
+                topic: data.topic || 'General Research',
+                keywords: data.keywords || []
             });
             setCurrentIndex(-1);
             setIsPlaying(false);
