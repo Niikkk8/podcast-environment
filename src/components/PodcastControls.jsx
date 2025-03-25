@@ -3,7 +3,7 @@ import { usePodcast } from '../context/PodcastContext';
 import { useAnimation } from '../context/AnimationContext';
 import { ChatHistory } from './ChatHistory';
 
-const INTRO_MESSAGE = "Welcome to our Research Podcast! Today we'll be discussing an exciting paper.";
+const INTRO_MESSAGE = "Welcome to our Research Podcast! Let's explore this topic together.";
 
 export const PodcastControls = () => {
     const {
@@ -22,158 +22,90 @@ export const PodcastControls = () => {
     } = usePodcast();
 
     const { setMaleAnimation, setFemaleAnimation } = useAnimation();
-    const speakingRef = useRef(null);
-    const voicesLoadedRef = useRef(false);
-    const [availableVoices, setAvailableVoices] = useState([]);
-    const [showModal, setShowModal] = useState(false);
-    const [selectedFile, setSelectedFile] = useState(null);
+    const [inputText, setInputText] = useState('');
+    const [showPreferences, setShowPreferences] = useState(false);
+    const [voices, setVoices] = useState([]);
+    const currentUtterance = useRef(null);
     
-    // Updated preferences state with proper initial values
     const [preferences, setPreferences] = useState({
-        length: 'medium',
         tone: 'casual',
-        detailLevel: 'overview',
-        targetAudience: 'general',
-        speakingPace: 'normal',
-        includedSections: {
-            methodology: true,
-            results: true,
-            implications: true,
-            limitations: true,
-            futureWork: true
-        }
+        detailLevel: 'balanced',
+        targetAudience: 'general'
     });
 
-    // Form options with proper value/label pairs
-    const formOptions = [
-        { 
-            label: 'Podcast Length', 
-            name: 'length', 
-            options: [
-                { value: 'short', label: 'Short (5-10 minutes)' },
-                { value: 'medium', label: 'Medium (10-15 minutes)' },
-                { value: 'long', label: 'Long (15-20 minutes)' }
-            ]
-        },
-        { 
-            label: 'Conversation Tone', 
-            name: 'tone', 
-            options: [
-                { value: 'casual', label: 'Casual & Conversational' },
-                { value: 'professional', label: 'Professional' },
-                { value: 'academic', label: 'Academic' }
-            ]
-        },
-        { 
-            label: 'Detail Level', 
-            name: 'detailLevel', 
-            options: [
-                { value: 'overview', label: 'High-level Overview' },
-                { value: 'balanced', label: 'Balanced' },
-                { value: 'detailed', label: 'In-depth Details' }
-            ]
-        },
-        { 
-            label: 'Target Audience', 
-            name: 'targetAudience', 
-            options: [
-                { value: 'general', label: 'General Public' },
-                { value: 'academic', label: 'Academic Researchers' },
-                { value: 'industry', label: 'Industry Professionals' }
-            ]
-        },
-        { 
-            label: 'Speaking Pace', 
-            name: 'speakingPace', 
-            options: [
-                { value: 'slow', label: 'Slow & Clear' },
-                { value: 'normal', label: 'Normal' },
-                { value: 'fast', label: 'Fast-paced' }
-            ]
+    useEffect(() => {
+        // Load available voices
+        const loadVoices = () => {
+            const availableVoices = speechSynthesis.getVoices();
+            setVoices(availableVoices);
+        };
+
+        loadVoices();
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = loadVoices;
         }
-    ];
+
+        return () => {
+            if (currentUtterance.current) {
+                speechSynthesis.cancel();
+            }
+        };
+    }, []);
+
+    const getVoice = (isMale) => {
+        if (!voices.length) return null;
+        
+        const preferredVoices = isMale 
+            ? ['en-GB-Male', 'en-US-Male', 'Google UK English Male', 'Microsoft David']
+            : ['en-GB-Female', 'en-US-Female', 'Google UK English Female', 'Microsoft Zira'];
+
+        for (const preferred of preferredVoices) {
+            const voice = voices.find(v => v.name.includes(preferred));
+            if (voice) return voice;
+        }
+
+        return voices[0];
+    };
 
     const cleanMessage = (message) => {
         return message
             .replace(/\*\*(.*?)\*\*/g, '$1')
             .replace(/\[(.*?)\]/g, '')
-            .replace(/\(\d{2}:\d{2}:\d{2}\)/g, '')
-            .replace(/\(.*?\)/g, '')
+            .replace(/\((.*?)\)/g, '')
             .replace(/^(Host|Guest):\s*/i, '')
-            .replace(/^(Host|Guest)\s*/i, '')
             .trim();
-    };
-
-    const selectVoice = (isMale) => {
-        if (!availableVoices.length) return null;
-
-        const preferredVoices = isMale
-            ? ['Google UK English Male', 'Microsoft David', 'Male']
-            : ['Google UK English Female', 'Microsoft Zira', 'Female'];
-
-        for (const preferred of preferredVoices) {
-            const voice = availableVoices.find(v =>
-                v.name.includes(preferred) ||
-                v.name.toLowerCase().includes(preferred.toLowerCase())
-            );
-            if (voice) return voice;
-        }
-
-        return availableVoices[0];
     };
 
     const speakText = async (text, isMale = true) => {
         return new Promise((resolve) => {
-            if (speakingRef.current) {
+            if (currentUtterance.current) {
                 speechSynthesis.cancel();
             }
 
             const utterance = new SpeechSynthesisUtterance(text);
-            const selectedVoice = selectVoice(isMale);
-
-            if (selectedVoice) {
-                utterance.voice = selectedVoice;
+            const voice = getVoice(isMale);
+            
+            if (voice) {
+                utterance.voice = voice;
             }
-
-            utterance.rate = preferences.speakingPace === 'slow' ? 0.8 : 
-                           preferences.speakingPace === 'fast' ? 1.2 : 1;
+            
             utterance.pitch = isMale ? 0.9 : 1.1;
-            utterance.volume = 1.0;
+            utterance.rate = 1;
+            utterance.volume = 1;
 
             utterance.onend = () => {
                 setIsSpeaking(false);
                 resolve();
             };
 
-            utterance.onerror = (event) => {
-                console.error('Speech synthesis error:', event);
+            utterance.onerror = () => {
                 setIsSpeaking(false);
                 resolve();
             };
 
-            speakingRef.current = utterance;
+            currentUtterance.current = utterance;
             setIsSpeaking(true);
-
-            const sentences = text.split(/[.!?]+/).filter(Boolean);
-            sentences.forEach((sentence, index) => {
-                setTimeout(() => {
-                    const utterance = new SpeechSynthesisUtterance(sentence + '.');
-                    utterance.voice = selectedVoice;
-                    utterance.rate = preferences.speakingPace === 'slow' ? 0.8 : 
-                                   preferences.speakingPace === 'fast' ? 1.2 : 1;
-                    utterance.pitch = isMale ? 0.9 : 1.1;
-                    utterance.volume = 1.0;
-
-                    if (index === sentences.length - 1) {
-                        utterance.onend = () => {
-                            setIsSpeaking(false);
-                            resolve();
-                        };
-                    }
-
-                    speechSynthesis.speak(utterance);
-                }, index * 100);
-            });
+            speechSynthesis.speak(utterance);
         });
     };
 
@@ -183,14 +115,13 @@ export const PodcastControls = () => {
         const nextIndex = currentIndex + 1;
 
         if (currentIndex === -1) {
+            // Only use greeting animation for introduction
             setMaleAnimation('Greeting');
             setFemaleAnimation('Greeting');
             await speakText(INTRO_MESSAGE);
-            await new Promise(resolve => setTimeout(resolve, 500));
-            setCurrentIndex(nextIndex);
-            const firstMessage = cleanMessage(conversation[0].message);
-            await speakText(firstMessage, true);
             setMaleAnimation('Idle');
+            setFemaleAnimation('Idle');
+            setCurrentIndex(nextIndex);
             return;
         }
 
@@ -224,50 +155,23 @@ export const PodcastControls = () => {
         }
     };
 
-    const handlePreferenceChange = (e) => {
-        const { name, value, type, checked } = e.target;
-        setPreferences(prev => {
-            if (type === 'checkbox') {
-                return {
-                    ...prev,
-                    includedSections: {
-                        ...prev.includedSections,
-                        [name]: checked
-                    }
-                };
-            }
-            return {
-                ...prev,
-                [name]: value
-            };
-        });
-    };
-
-    const handleFileSelect = (event) => {
-        const file = event.target.files[0];
-        if (!file || !file.name.toLowerCase().endsWith('.pdf')) {
-            alert('Please upload a PDF file');
-            return;
-        }
-        setSelectedFile(file);
-        setShowModal(true);
-    };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!selectedFile) return;
+        if (!inputText.trim()) return;
 
         setIsGenerating(true);
-        setShowModal(false);
-
-        const formData = new FormData();
-        formData.append('pdf', selectedFile);
-        formData.append('preferences', JSON.stringify(preferences));
+        setShowPreferences(false);
 
         try {
             const response = await fetch('http://localhost:5000/api/generate-podcast', {
                 method: 'POST',
-                body: formData
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: inputText,
+                    preferences: preferences
+                }),
             });
 
             if (!response.ok) {
@@ -275,22 +179,16 @@ export const PodcastControls = () => {
             }
 
             const data = await response.json();
-
-            if (!data.conversation || !Array.isArray(data.conversation)) {
-                throw new Error('Invalid response format from server');
-            }
-
             setConversation(data.conversation);
             setPaperDetails({
-                title: data.title || 'Untitled Paper',
-                topic: data.topic || 'General Research',
-                keywords: data.keywords || []
+                title: data.title,
+                topic: data.topic
             });
             setCurrentIndex(-1);
             setIsPlaying(false);
         } catch (error) {
             console.error('Error:', error);
-            alert(error.message || 'Error generating podcast. Please try again.');
+            alert('Error generating podcast. Please try again.');
         } finally {
             setIsGenerating(false);
         }
@@ -320,80 +218,121 @@ export const PodcastControls = () => {
         setIsPlaying(false);
         setMaleAnimation('Idle');
         setFemaleAnimation('Idle');
-        setSelectedFile(null);
-        setShowModal(false);
+        setInputText('');
     };
 
     useEffect(() => {
-        const loadVoices = () => {
-            const voices = speechSynthesis.getVoices();
-            if (voices.length > 0) {
-                setAvailableVoices(voices);
-                voicesLoadedRef.current = true;
-            }
-        };
-
-        loadVoices();
-        speechSynthesis.onvoiceschanged = loadVoices;
-
-        return () => {
-            if (speakingRef.current) {
-                speechSynthesis.cancel();
-            }
-        };
-    }, []);
-
-    useEffect(() => {
-        if (isPlaying && !isSpeaking && voicesLoadedRef.current) {
+        if (isPlaying && !isSpeaking) {
             prepareNextLine();
         }
     }, [isPlaying, isSpeaking, currentIndex]);
 
     return (
-        <div className="relative min-h-screen bg-gray-100 flex flex-col items-center px-4">
-            {/* Main Controls */}
+        <div className="relative min-h-screen flex flex-col items-center px-4">
             <div className="fixed top-6 left-1/2 transform -translate-x-1/2 flex flex-col gap-4 
-                          bg-black/30 backdrop-blur-md p-5 rounded-xl shadow-lg z-10">
-                <div className="flex items-center gap-4">
-                    {!conversation.length && (
-                        <input
-                            type="file"
-                            accept=".pdf"
-                            onChange={handleFileSelect}
-                            className="file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 
-                                     file:bg-gradient-to-r from-blue-500 to-indigo-500 file:text-white 
-                                     hover:file:opacity-90 transition cursor-pointer"
+                          bg-black/30 backdrop-blur-md p-5 rounded-xl shadow-lg z-10 w-full max-w-2xl">
+                
+                {!conversation.length ? (
+                    <form onSubmit={handleSubmit} className="w-full space-y-4">
+                        <textarea
+                            value={inputText}
+                            onChange={(e) => setInputText(e.target.value)}
+                            placeholder="Enter your topic or text here..."
+                            className="w-full h-32 p-3 rounded-lg border border-gray-300 focus:ring-2 
+                                     focus:ring-blue-500 focus:border-blue-500"
                         />
-                    )}
-    
-                    {conversation.length > 0 && (
                         <div className="flex gap-3">
                             <button
-                                onClick={handlePlayPause}
-                                className="px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold 
-                                         shadow-md hover:bg-blue-700 transition disabled:opacity-50"
+                                type="submit"
+                                className="flex-1 bg-blue-600 text-white font-semibold py-2 px-4 
+                                         rounded-lg shadow-md hover:bg-blue-700 transition"
                                 disabled={isGenerating}
                             >
-                                {isPlaying ? 'Pause' : 'Play'}
+                                Generate Podcast
                             </button>
                             <button
-                                onClick={handleReset}
-                                className="px-5 py-2 rounded-lg bg-gray-600 text-white font-semibold 
-                                         shadow-md hover:bg-gray-700 transition disabled:opacity-50"
-                                disabled={isGenerating}
+                                type="button"
+                                onClick={() => setShowPreferences(!showPreferences)}
+                                className="bg-gray-600 text-white font-semibold py-2 px-4 
+                                         rounded-lg shadow-md hover:bg-gray-700 transition"
                             >
-                                Reset
+                                ⚙️
                             </button>
                         </div>
-                    )}
-                </div>
-    
+                    </form>
+                ) : (
+                    <div className="flex gap-3">
+                        <button
+                            onClick={handlePlayPause}
+                            className="px-5 py-2 rounded-lg bg-blue-600 text-white font-semibold 
+                                     shadow-md hover:bg-blue-700 transition"
+                            disabled={isGenerating}
+                        >
+                            {isPlaying ? 'Pause' : 'Play'}
+                        </button>
+                        <button
+                            onClick={handleReset}
+                            className="px-5 py-2 rounded-lg bg-gray-600 text-white font-semibold 
+                                     shadow-md hover:bg-gray-700 transition"
+                        >
+                            Reset
+                        </button>
+                    </div>
+                )}
+
+                {showPreferences && (
+                    <div className="bg-white rounded-lg p-4 space-y-3">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Conversation Tone
+                            </label>
+                            <select
+                                value={preferences.tone}
+                                onChange={(e) => setPreferences({...preferences, tone: e.target.value})}
+                                className="w-full border rounded-md p-2"
+                            >
+                                <option value="casual">Casual & Conversational</option>
+                                <option value="professional">Professional</option>
+                                <option value="academic">Academic</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Detail Level
+                            </label>
+                            <select
+                                value={preferences.detailLevel}
+                                onChange={(e) => setPreferences({...preferences, detailLevel: e.target.value})}
+                                className="w-full border rounded-md p-2"
+                            >
+                                <option value="overview">High-level Overview</option>
+                                <option value="balanced">Balanced</option>
+                                <option value="detailed">In-depth Details</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Target Audience
+                            </label>
+                            <select
+                                value={preferences.targetAudience}
+                                onChange={(e) => setPreferences({...preferences, targetAudience: e.target.value})}
+                                className="w-full border rounded-md p-2"
+                            >
+                                <option value="general">General Public</option>
+                                <option value="academic">Academic Researchers</option>
+                                <option value="industry">Industry Professionals</option>
+                            </select>
+                        </div>
+                    </div>
+                )}
+
                 {isGenerating && (
                     <div className="text-white animate-pulse text-center font-semibold">
                         Generating podcast script...
                     </div>
                 )}
-    
+
                 {paperDetails.title && (
                     <div className="text-white text-center">
                         <h3 className="font-bold text-lg">{paperDetails.title}</h3>
@@ -401,97 +340,7 @@ export const PodcastControls = () => {
                     </div>
                 )}
             </div>
-    
-            {/* Preferences Modal */}
-            {showModal && (
-                <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
-                    <div className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-lg mx-4">
-                        <div className="flex justify-between items-center mb-6">
-                            <h2 className="text-xl font-bold text-gray-900">Customize Your Podcast</h2>
-                            <button 
-                                onClick={() => setShowModal(false)}
-                                className="text-gray-500 hover:text-gray-700 p-2 rounded-full transition"
-                            >
-                                ✕
-                            </button>
-                        </div>
-    
-                        <form onSubmit={handleSubmit} className="space-y-5">
-                            <div className="space-y-4">
-                                {formOptions.map(({ label, name, options }) => (
-                                    <div key={name}>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            {label}
-                                        </label>
-                                        <select
-                                            name={name}
-                                            value={preferences[name]}
-                                            onChange={handlePreferenceChange}
-                                            className="w-full border border-gray-300 rounded-lg px-3 py-2 
-                                                     focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
-                                        >
-                                            {options.map((option) => (
-                                                <option key={option.value} value={option.value}>
-                                                    {option.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                ))}
-                            </div>
-    
-                            {/* Checkbox Sections */}
-                            <div className="mt-4">
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Include Sections
-                                </label>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {Object.entries({
-                                        methodology: 'Research Methodology',
-                                        results: 'Key Results',
-                                        implications: 'Practical Implications',
-                                        limitations: 'Study Limitations',
-                                        futureWork: 'Future Work'
-                                    }).map(([key, label]) => (
-                                        <label key={key} className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
-                                                name={key}
-                                                checked={preferences.includedSections[key]}
-                                                onChange={handlePreferenceChange}
-                                                className="rounded border-gray-300 text-blue-500 
-                                                         focus:ring-blue-500 transition"
-                                            />
-                                            <span className="text-sm text-gray-700">{label}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-    
-                            {/* Modal Actions */}
-                            <div className="flex gap-4 pt-5 border-t border-gray-200 mt-4">
-                                <button
-                                    type="submit"
-                                    className="flex-1 bg-gradient-to-r from-blue-500 to-indigo-500 text-white 
-                                             font-semibold py-2 px-4 rounded-lg shadow-md hover:opacity-90 transition"
-                                >
-                                    Generate Podcast
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowModal(false)}
-                                    className="flex-1 bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg 
-                                             shadow-md hover:bg-gray-700 transition"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-    
-            {/* Chat history component */}
+
             {conversation.length > 0 && <ChatHistory />}
         </div>
     );

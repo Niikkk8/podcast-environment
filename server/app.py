@@ -1,70 +1,44 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import pdfplumber
 import google.generativeai as genai
-from werkzeug.serving import WSGIRequestHandler
-import json
-
-WSGIRequestHandler.protocol_version = "HTTP/1.1"
 
 app = Flask(__name__)
-CORS(app, resources={
-    r"/api/*": {
-        "origins": "*",
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type"]
-    }
-})
+CORS(app)
 
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
-
-GEMINI_API_KEY = "AIzaSyAJG76gsqVHGiJ0TKwTZqKvrpdvmFw7k0M"
+GEMINI_API_KEY = "AIzaSyDv5AsvRiDXJaY8MD1JdQAvU5pjjFK4Zzs"
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-2.0-flash')
 
-def extract_text_from_pdf(pdf_file):
-    try:
-        with pdfplumber.open(pdf_file) as pdf:
-            text = ""
-            for page in pdf.pages:
-                page_text = page.extract_text()
-                if page_text:
-                    text += page_text + "\n"
-        return text
-    except Exception as e:
-        print(f"Error reading PDF: {e}")
-        return None
+def get_conversation_style(preferences):
+    tone_map = {
+        'casual': "Use a conversational, friendly tone with everyday language and relatable examples.",
+        'professional': "Maintain a professional tone while being clear and accessible.",
+        'academic': "Use academic language and technical terminology appropriately."
+    }
 
-def extract_key_points(text):
-    try:
-        analysis_prompt = f"""Analyze this research paper and identify 5 key points for discussion:
-        1. Main objective/problem being addressed
-        2. Methodology or approach
-        3. Key findings or results
-        4. Practical implications
-        5. Future directions or challenges
-        
-        Format the response as:
-        Point1: [brief description]
-        Point2: [brief description]
-        Point3: [brief description]
-        Point4: [brief description]
-        Point5: [brief description]
-        
-        Text: {text[:3000]}"""
-        
-        response = model.generate_content(analysis_prompt)
-        points = response.text.strip().split('\n')
-        return points
-    except Exception as e:
-        print(f"Error extracting key points: {e}")
-        return []
+    detail_map = {
+        'overview': "Focus on high-level concepts and main takeaways.",
+        'balanced': "Balance key concepts with supporting details.",
+        'detailed': "Include specific details and technical aspects."
+    }
 
-def extract_paper_details(text):
+    audience_map = {
+        'general': "Explain concepts for an educated but non-expert audience.",
+        'academic': "Use scholarly language and focus on research implications.",
+        'industry': "Emphasize practical applications and industry relevance."
+    }
+
+    return f"""
+    {tone_map[preferences['tone']]}
+    {detail_map[preferences['detailLevel']]}
+    {audience_map[preferences['targetAudience']]}
+    """
+
+def extract_topic_details(text):
     try:
-        analysis_prompt = f"""Analyze the following research paper text and extract:
-        1. The paper's title
-        2. The main research topic/field
+        analysis_prompt = f"""Analyze the following text and extract:
+        1. A suitable title for this topic
+        2. The main field/area this topic belongs to
         Keep the response in simple format: "Title: [title]\nTopic: [topic]"
         
         Text: {text[:2000]}"""
@@ -75,61 +49,20 @@ def extract_paper_details(text):
         title_line = [line for line in analysis.split('\n') if line.startswith('Title:')]
         topic_line = [line for line in analysis.split('\n') if line.startswith('Topic:')]
         
-        title = title_line[0].replace('Title:', '').strip() if title_line else "Untitled Research Paper"
-        topic = topic_line[0].replace('Topic:', '').strip() if topic_line else "General Research"
+        title = title_line[0].replace('Title:', '').strip() if title_line else "Discussion Topic"
+        topic = topic_line[0].replace('Topic:', '').strip() if topic_line else "General Discussion"
         
         return title, topic
     except Exception as e:
-        print(f"Error extracting paper details: {e}")
-        return "Untitled Research Paper", "General Research"
+        print(f"Error extracting topic details: {e}")
+        return "Discussion Topic", "General Discussion"
 
-def get_conversation_style(preferences):
-    length_map = {
-        'short': "Keep responses concise, between 1-2 sentences.",
-        'medium': "Provide moderate detail, between 2-3 sentences.",
-        'long': "Give comprehensive responses, between 3-4 sentences."
-    }
-
-    tone_map = {
-        'casual': "Use a conversational, friendly tone with everyday language and relatable examples.",
-        'professional': "Maintain a professional tone while being clear and accessible.",
-        'academic': "Use academic language and technical terminology appropriately."
-    }
-
-    detail_map = {
-        'overview': "Focus on high-level concepts and main takeaways.",
-        'balanced': "Balance key concepts with supporting details.",
-        'detailed': "Include specific details, methodology, and technical aspects."
-    }
-
-    audience_map = {
-        'general': "Explain concepts for an educated but non-expert audience.",
-        'academic': "Use scholarly language and focus on research implications.",
-        'industry': "Emphasize practical applications and industry relevance."
-    }
-
-    pace_map = {
-        'slow': "Use shorter sentences and clear transitions.",
-        'normal': "Maintain a natural conversational pace.",
-        'fast': "Use efficient language while maintaining clarity."
-    }
-
-    return f"""
-    {length_map[preferences['length']]}
-    {tone_map[preferences['tone']]}
-    {detail_map[preferences['detailLevel']]}
-    {audience_map[preferences['targetAudience']]}
-    {pace_map[preferences['speakingPace']]}
-    """
-
-def generate_conversation(text, key_points, preferences, title, topic):
+def generate_conversation(text, preferences, title, topic):
     conversation = []
     style_instructions = get_conversation_style(preferences)
-    included_sections = preferences['includedSections']
     
     # Introduction
-    intro_prompt = f"""Generate a welcoming podcast introduction for a research paper discussion.
-    The paper is titled '{title}' about {topic}'.
+    intro_prompt = f"""Generate a welcoming podcast introduction for a discussion about '{title}'.
     
     Guidelines:
     - Start with a general welcome
@@ -143,54 +76,40 @@ def generate_conversation(text, key_points, preferences, title, topic):
     conversation.append({"speaker": "Host", "message": host_intro.text.strip()})
     
     guest_intro = model.generate_content(f"""
-    Generate an expert's opening response about the paper '{title}'.
-    - Focus directly on the research topic
-    - Express enthusiasm about the research
+    Generate an expert's opening response about the topic '{title}'.
+    - Express enthusiasm about discussing this topic
+    - Highlight why this topic is interesting or important
     - Use natural, conversational language
     
     {style_instructions}
     """)
     conversation.append({"speaker": "Guest", "message": guest_intro.text.strip()})
     
-    # Main sections
-    if included_sections.get('methodology', True):
-        for prompt in [
-            (f"Ask about the research objective and its significance.\nContext: {key_points[0] if key_points else ''}", True),
-            (f"Explain the research objective and its importance.\nContext: {key_points[0] if key_points else ''}", False),
-            (f"Ask about the research methodology.\nContext: {key_points[1] if len(key_points) > 1 else ''}", True),
-            (f"Explain the methodology clearly.\nContext: {key_points[1] if len(key_points) > 1 else ''}", False)
-        ]:
-            response = model.generate_content(f"{prompt[0]}\n{style_instructions}")
-            conversation.append({
-                "speaker": "Host" if prompt[1] else "Guest",
-                "message": response.text.strip()
-            })
+    # Main discussion points
+    prompts = [
+        (f"Ask about the main aspects or key points of this topic.\nContext: {text[:500]}", True),
+        (f"Explain the fundamental concepts and their significance.\nContext: {text[:500]}", False),
+        (f"Ask about practical applications or real-world implications.", True),
+        (f"Discuss the practical implications and applications in detail.\nContext: {text[500:1000]}", False),
+        (f"Ask about challenges or interesting aspects of this topic.", True),
+        (f"Explain the challenges and interesting aspects.\nContext: {text[1000:1500]}", False),
+        (f"Ask about future developments or potential impact.", True),
+        (f"Discuss future possibilities and potential impact.\nContext: {text[1500:2000]}", False)
+    ]
     
-    if included_sections.get('results', True):
-        for prompt in [
-            (f"Ask about key findings.\nContext: {key_points[2] if len(key_points) > 2 else ''}", True),
-            (f"Share the key findings and their importance.\nContext: {key_points[2] if len(key_points) > 2 else ''}", False)
-        ]:
-            response = model.generate_content(f"{prompt[0]}\n{style_instructions}")
-            conversation.append({
-                "speaker": "Host" if prompt[1] else "Guest",
-                "message": response.text.strip()
-            })
-    
-    if included_sections.get('implications', True):
-        for prompt in [
-            (f"Ask about practical implications.\nContext: {key_points[3] if len(key_points) > 3 else ''}", True),
-            (f"Discuss practical applications.\nContext: {key_points[3] if len(key_points) > 3 else ''}", False)
-        ]:
-            response = model.generate_content(f"{prompt[0]}\n{style_instructions}")
-            conversation.append({
-                "speaker": "Host" if prompt[1] else "Guest",
-                "message": response.text.strip()
-            })
+    for prompt in prompts:
+        response = model.generate_content(f"{prompt[0]}\n{style_instructions}")
+        conversation.append({
+            "speaker": "Host" if prompt[1] else "Guest",
+            "message": response.text.strip()
+        })
     
     # Closing
-    closing = model.generate_content(f"""Generate a concluding remark.
-    Summarize key points and thank the audience.
+    closing = model.generate_content(f"""Generate a concluding remark for the discussion about '{title}'.
+    - Summarize key points
+    - Thank the audience
+    - End on an engaging note
+    
     {style_instructions}""")
     conversation.append({"speaker": "Host", "message": closing.text.strip()})
     
@@ -199,24 +118,20 @@ def generate_conversation(text, key_points, preferences, title, topic):
 @app.route('/api/generate-podcast', methods=['POST'])
 def generate_podcast():
     try:
-        if 'pdf' not in request.files:
-            return jsonify({'error': 'No PDF file provided'}), 400
+        data = request.json
+        if not data or 'text' not in data:
+            return jsonify({'error': 'No text provided'}), 400
 
-        preferences = json.loads(request.form.get('preferences', '{}'))
-        pdf_file = request.files['pdf']
+        preferences = data.get('preferences', {
+            'tone': 'casual',
+            'detailLevel': 'balanced',
+            'targetAudience': 'general'
+        })
         
-        if pdf_file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
-
-        research_paper_text = extract_text_from_pdf(pdf_file)
-        if not research_paper_text:
-            return jsonify({'error': 'Failed to extract text from PDF'}), 400
-
-        title, topic = extract_paper_details(research_paper_text)
-        key_points = extract_key_points(research_paper_text)
+        input_text = data['text']
+        title, topic = extract_topic_details(input_text)
         conversation = generate_conversation(
-            research_paper_text,
-            key_points,
+            input_text,
             preferences,
             title,
             topic
@@ -233,4 +148,4 @@ def generate_podcast():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000, threaded=True, host='0.0.0.0')
+    app.run(debug=True, port=5000)

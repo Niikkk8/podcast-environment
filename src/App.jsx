@@ -15,7 +15,7 @@ function App() {
             <Experience />
           </Canvas>
           {/* <AnimationControls /> */}
-          <div style={{ maxWidth: "90vw", overflowX: "auto" }}>
+          <div style={{ maxWidth: "99vw", overflowX: "auto" }}>
             <PodcastControls />
           </div>
         </div>
